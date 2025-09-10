@@ -1,0 +1,33 @@
+version: '3.8'
+
+services:
+  garvis:
+    build: .
+    container_name: garvis-slack-bot
+    restart: unless-stopped
+    environment:
+      - NODE_ENV=production
+      - LOG_LEVEL=info
+      - TZ=Asia/Hong_Kong
+    env_file:
+      - .env
+    volumes:
+      # Mount logs to shared folder for easy access
+      - ./logs:/usr/src/app/logs
+      # Optional: Mount for persistent data if needed
+      - ./data:/usr/src/app/data
+    # Memory limit for DS920+ (optional)
+    mem_limit: 512m
+    # Health check
+    healthcheck:
+      test: ["CMD", "node", "-e", "console.log('Health check')"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    # Enable logging
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
