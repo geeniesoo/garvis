@@ -26,6 +26,13 @@ export class InfoRetrievalAgent extends BaseAgent {
       'time',
       'date',
       'weather',
+      'hello',
+      'hi',
+      'hey',
+      'greetings',
+      'good morning',
+      'good afternoon',
+      'good evening',
     ];
 
     return this.hasKeywords(request.content, keywords);
@@ -33,6 +40,21 @@ export class InfoRetrievalAgent extends BaseAgent {
 
   protected async executeInternal(request: AgentRequest): Promise<string> {
     const content = request.content.toLowerCase();
+
+    // Handle greetings
+    if (content.includes('hello') || content.includes('hi') || content.includes('hey') || 
+        content.includes('greetings') || content.includes('good morning') || 
+        content.includes('good afternoon') || content.includes('good evening')) {
+      return `Hello! 👋 I'm Garvis, your AI assistant. I'm here to help you with information, questions, and various tasks.
+
+You can:
+• Ask me questions about topics
+• Request information or explanations  
+• Use /garvis commands
+• Just chat with me naturally
+
+What can I help you with today?`;
+    }
 
     // Simple keyword-based responses for demonstration
     if (content.includes('what is garvis') || content.includes('about garvis')) {

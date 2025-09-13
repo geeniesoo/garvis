@@ -1,4 +1,5 @@
-import { App, SlackEventMiddlewareArgs, AllMiddlewareArgs } from '@slack/bolt';
+import { App } from '@slack/bolt';
+import { WebClient } from '@slack/web-api';
 import { Logger } from 'winston';
 import { v4 as uuidv4 } from 'uuid';
 import { AgentManager } from '../agent-manager';
@@ -6,6 +7,7 @@ import { AgentRequest, GarvisConfig, SlackError } from '../../types';
 
 export class GarvisBot {
   private app: App;
+  private webClient: WebClient;
   private isStarted = false;
 
   constructor(
@@ -20,6 +22,7 @@ export class GarvisBot {
       socketMode: true,
     });
 
+    this.webClient = new WebClient(config.slack.botToken);
     this.setupEventHandlers();
   }
 
@@ -34,18 +37,71 @@ export class GarvisBot {
       }
     });
 
-    // Handle direct messages with simple say() - HTTP mode
+    // Handle all messages in dedicated Garvis channels (no @mention needed)
     this.app.message(async ({ message, say }) => {
+      // Only handle messages in channels with 'garvis' in the name, excluding bot messages
+      if (message.channel_type === 'channel' && 
+          'text' in message && 
+          'user' in message && 
+          !message.subtype) {
+        
+        // Get channel info to check if it's a Garvis channel
+        try {
+          const channelInfo = await this.app.client.conversations.info({
+            channel: message.channel,
+          });
+          
+          const channelName = channelInfo.channel?.name?.toLowerCase() || '';
+          this.logger.info('Channel message received', {
+            channel: message.channel,
+            channelName,
+            text: message.text,
+            user: message.user
+          });
+          
+          // Check if channel name contains 'garvis' (case insensitive)
+          if (channelName.includes('garvis') || channelName.includes('ai')) {
+            this.logger.info('Processing message in Garvis channel', { channelName });
+            // Remove any @garvis mentions from the text to avoid duplicate handling
+            const cleanText = message.text.replace(/<@[UW][A-Z0-9]+>/g, '').trim();
+            if (cleanText) {
+              await this.handleMessage(cleanText, message.user, message.channel, say);
+            }
+          } else {
+            this.logger.info('Ignoring message - not a Garvis channel', { channelName });
+          }
+        } catch (error) {
+          // Ignore errors from channel info lookup
+          this.logger.debug('Could not get channel info', { error, channel: message.channel });
+        }
+      }
+    });
+
+    // Handle direct messages with dedicated WebClient
+    this.app.message(async ({ message }) => {
       // Only handle direct messages in IM channels, excluding bot messages
       if (message.channel_type === 'im' && 
           'text' in message && 
           'user' in message && 
           !message.subtype) {
         try {
-          await this.handleMessage(message.text, message.user, message.channel, say);
+          const dmResponder = async (responseText: string) => {
+            // Use dedicated WebClient with unique timestamp
+            await this.webClient.chat.postMessage({
+              channel: message.channel,
+              text: responseText,
+              unfurl_links: false,
+              unfurl_media: false,
+            });
+          };
+          
+          await this.handleMessage(message.text, message.user, message.channel, dmResponder);
         } catch (error) {
           this.logger.error('Error handling direct message', { error, message });
-          await say('Sorry, I encountered an error processing your request.');
+          await this.webClient.chat.postMessage({
+            channel: message.channel,
+            text: 'Sorry, I encountered an error processing your request.',
+          });
         }
       }
     });
