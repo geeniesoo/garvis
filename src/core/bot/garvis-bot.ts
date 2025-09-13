@@ -34,27 +34,18 @@ export class GarvisBot {
       }
     });
 
-    // Handle direct messages
-    this.app.message(async ({ message, say, client }) => {
-      // Only handle direct messages in DM channels
-      if (message.channel_type === 'im' && 'text' in message && 'user' in message) {
+    // Handle direct messages with simple say() - HTTP mode
+    this.app.message(async ({ message, say }) => {
+      // Only handle direct messages in IM channels, excluding bot messages
+      if (message.channel_type === 'im' && 
+          'text' in message && 
+          'user' in message && 
+          !message.subtype) {
         try {
-          // Use client.chat.postMessage for DMs instead of say()
-          const dmResponder = async (response: any) => {
-            await client.chat.postMessage({
-              channel: message.channel,
-              text: typeof response === 'string' ? response : response.text,
-              ...(typeof response === 'object' ? response : {})
-            });
-          };
-          
-          await this.handleMessage(message.text, message.user, message.channel, dmResponder);
+          await this.handleMessage(message.text, message.user, message.channel, say);
         } catch (error) {
           this.logger.error('Error handling direct message', { error, message });
-          await client.chat.postMessage({
-            channel: message.channel,
-            text: 'Sorry, I encountered an error processing your request.'
-          });
+          await say('Sorry, I encountered an error processing your request.');
         }
       }
     });
@@ -135,15 +126,8 @@ export class GarvisBot {
       // Execute the request through the agent manager
       const response = await this.agentManager.executeRequest(request);
 
-      // Send response back to Slack
-      const responseOptions: any = {
-        text: response.content,
-      };
-
-      // Use thread if available (for app mentions)
-      if (threadTs && !isSlashCommand) {
-        responseOptions.thread_ts = threadTs;
-      }
+      // Prepare response text
+      let responseText = response.content;
 
       // Add metadata for successful responses
       if (response.status === 'success' && response.metadata) {
@@ -151,11 +135,21 @@ export class GarvisBot {
         const agentUsed = response.metadata.agentUsed;
         
         if (executionTime && agentUsed) {
-          responseOptions.text += `\n\n_Processed by ${agentUsed} in ${executionTime}ms_`;
+          responseText += `\n\n_Processed by ${agentUsed} in ${executionTime}ms_`;
         }
       }
 
-      await respond(responseOptions);
+      // Send response - different handling for threaded vs DM
+      if (threadTs && !isSlashCommand) {
+        // For app mentions with threading
+        await respond({
+          text: responseText,
+          thread_ts: threadTs,
+        });
+      } else {
+        // For DMs and slash commands - pass as string
+        await respond(responseText);
+      }
 
       this.logger.info('Response sent successfully', {
         requestId: request.id,

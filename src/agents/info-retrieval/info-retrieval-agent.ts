@@ -21,6 +21,11 @@ export class InfoRetrievalAgent extends BaseAgent {
       'why',
       'when',
       'where',
+      'help',
+      'commands',
+      'time',
+      'date',
+      'weather',
     ];
 
     return this.hasKeywords(request.content, keywords);
